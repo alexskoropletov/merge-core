@@ -23,27 +23,46 @@ export const GameBoard: React.FC<Props> = ({
   dragOverCell,
   activeResourceItemIds = [],
   selectedItemId = null,
-}) => (
-  <View style={styles.board}>
-    {board.map((row, y) => (
-      <View key={y} style={styles.row}>
-        {row.map((cell, x) => (
-          <Cell
-            key={x}
-            item={cell.item}
-            onPress={() => onCellPress && onCellPress(x, y)}
-            onDragStart={() => onItemDragStart && onItemDragStart(x, y)}
-            onDrop={() => onItemDrop && onItemDrop(x, y)}
-            onDragMove={(absoluteX, absoluteY) => onItemDragMove && onItemDragMove(x, y, absoluteX, absoluteY)}
-            isDragOver={!!(dragOverCell && dragOverCell.x === x && dragOverCell.y === y)}
-            isResourceActive={cell.item ? activeResourceItemIds.includes(cell.item.id) : false}
-            isSelected={cell.item ? cell.item.id === selectedItemId : false}
-          />
-        ))}
+}) => {
+  return (
+    <View style={styles.board}>
+      {/* Основные ряды доски */}
+      {board.slice(0, -1).map((row, y) => (
+        <View key={y} style={styles.row}>
+          {row.map((cell, x) => (
+            <Cell
+              key={x}
+              item={cell.item}
+              onPress={() => onCellPress && onCellPress(x, y)}
+              onDragStart={() => onItemDragStart && onItemDragStart(x, y)}
+              onDrop={() => onItemDrop && onItemDrop(x, y)}
+              onDragMove={(absoluteX, absoluteY) => onItemDragMove && onItemDragMove(x, y, absoluteX, absoluteY)}
+              isDragOver={!!(dragOverCell && dragOverCell.x === x && dragOverCell.y === y)}
+              isResourceActive={cell.item ? activeResourceItemIds.includes(cell.item.id) : false}
+              isSelected={cell.item ? cell.item.id === selectedItemId : false}
+              isPitCell={false}
+            />
+          ))}
+        </View>
+      ))}
+      
+      {/* Яма как одна сплошная ячейка */}
+      <View style={styles.pitRow}>
+        <Cell
+          item={null}
+          onPress={() => onCellPress && onCellPress(0, board.length - 1)}
+          onDragStart={() => onItemDragStart && onItemDragStart(0, board.length - 1)}
+          onDrop={() => onItemDrop && onItemDrop(0, board.length - 1)}
+          onDragMove={(absoluteX, absoluteY) => onItemDragMove && onItemDragMove(0, board.length - 1, absoluteX, absoluteY)}
+          isDragOver={!!(dragOverCell && dragOverCell.y === board.length - 1)}
+          isResourceActive={false}
+          isSelected={false}
+          isPitCell={true}
+        />
       </View>
-    ))}
-  </View>
-);
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   board: {
@@ -53,5 +72,9 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
+  },
+  pitRow: {
+    flexDirection: 'row',
+    marginTop: 8,
   },
 }); 

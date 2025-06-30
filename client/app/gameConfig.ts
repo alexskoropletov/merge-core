@@ -1,7 +1,7 @@
 // Конфиг игровых механик
 export const GAME_CONFIG = {
   BOARD_WIDTH: 7,
-  BOARD_HEIGHT: 7,
+  BOARD_HEIGHT: 8,
   INITIAL_RESOURCES: {
     blue: 1000,
     red: 1000,
@@ -12,8 +12,19 @@ export const GAME_CONFIG = {
     orange_triangle: 0,
   },
   MISSION_REWARDS: {
-    black_square: 1, // за каждое выполненное задание
-    orange_triangle: 0, // пока не используется
+    // Функция для определения наград в зависимости от сложности задания
+    getRewards: (missionId: number) => {
+      if (missionId <= 6) {
+        // Простые задания (1-6) - только черные квадратики
+        return { black_square: 1, orange_triangle: 0 };
+      } else if (missionId <= 12) {
+        // Средние задания (7-12) - больше черных квадратиков
+        return { black_square: 2, orange_triangle: 0 };
+      } else {
+        // Сложные задания (13-14) - оранжевые треугольнички
+        return { black_square: 1, orange_triangle: 1 };
+      }
+    },
   },
   GENERATOR_COST: (level: number) => level * 10, // 10, 20, 30
   GENERATOR_ELEMENT_PROBABILITIES: {

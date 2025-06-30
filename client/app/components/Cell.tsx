@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Text, Pressable } from 'react-native';
 import { Item } from '../types/GameTypes';
 import { ItemView } from './ItemView';
 
@@ -12,6 +12,7 @@ interface Props {
   isDragOver?: boolean;
   isResourceActive?: boolean;
   isSelected?: boolean;
+  isPitCell?: boolean;
 }
 
 export const Cell: React.FC<Props> = ({ 
@@ -22,20 +23,51 @@ export const Cell: React.FC<Props> = ({
   onDragMove, 
   isDragOver, 
   isResourceActive, 
-  isSelected
-}) => (
-  <View style={[styles.cell, isDragOver && styles.dragOver, isResourceActive && styles.resourceActive, isSelected && styles.selected]}>
-    {item && (
-      <ItemView 
-        item={item} 
-        onPress={onPress} 
-        onDragStart={onDragStart} 
-        onDrop={onDrop}
-        onDragMove={onDragMove}
-      />
-    )}
-  </View>
-);
+  isSelected, 
+  isPitCell
+}) => {
+  const handlePitPress = () => {
+    if (onPress) {
+      onPress();
+    }
+  };
+
+  if (isPitCell && !item) {
+    return (
+      <Pressable 
+        onPress={handlePitPress}
+        style={[
+          styles.cell, 
+          styles.pitCell,
+          isDragOver && styles.dragOver,
+          { width: 280, height: 40 } // Ширина = 7 ячеек * 40px + отступы
+        ]}
+      >
+        <Text style={styles.pitText}>Яма</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={[
+      styles.cell, 
+      isDragOver && styles.dragOver, 
+      isResourceActive && styles.resourceActive, 
+      isSelected && styles.selected,
+      isPitCell && styles.pitCell
+    ]}>
+      {item && (
+        <ItemView 
+          item={item} 
+          onPress={onPress} 
+          onDragStart={onDragStart} 
+          onDrop={onDrop}
+          onDragMove={onDragMove}
+        />
+      )}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   cell: {
@@ -68,5 +100,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.7,
     shadowRadius: 8,
     elevation: 8,
+  },
+  pitCell: {
+    backgroundColor: '#424242',
+    borderColor: '#666',
+  },
+  pitText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 }); 

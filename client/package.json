@@ -8,6 +8,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "build:web": "expo export:web",
+    "build:android": "expo build:android",
+    "build:android-apk": "expo build:android --type apk",
+    "build:android-aab": "expo build:android --type app-bundle",
     "lint": "expo lint"
   },
   "dependencies": {

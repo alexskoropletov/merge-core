@@ -38,12 +38,9 @@ const getInitialBoard = (): Board => {
 
   // Размещаем генераторы на стартовом поле
   const generators = [
-    { type: 'generator' as const, level: 1, resourceType: 'blue' as const },
     { type: 'generator' as const, level: 2, resourceType: 'blue' as const },
-    { type: 'generator' as const, level: 3, resourceType: 'blue' as const },
-    { type: 'generator' as const, level: 1, resourceType: 'red' as const },
     { type: 'generator' as const, level: 2, resourceType: 'red' as const },
-    { type: 'generator' as const, level: 3, resourceType: 'red' as const },
+    { type: 'generator' as const, level: 2, resourceType: 'gray' as const },
   ];
 
   generators.forEach((generator, index) => {
@@ -118,11 +115,14 @@ export const GameScreen: React.FC = () => {
   const [activeResourceItemIds, setActiveResourceItemIds] = useState<string[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [pitItems, setPitItems] = useState<Item[]>([]);
-  const [isDraggingToPit, setIsDraggingToPit] = useState(false);
   const [currentMission, setCurrentMission] = useState(GAME_CONFIG.MISSIONS[0]);
   const [showingMission, setShowingMission] = useState(false);
   const [completedMissionItems, setCompletedMissionItems] = useState<Set<string>>(new Set());
   const [rewards, setRewards] = useState<RewardBarsType>({ ...GAME_CONFIG.INITIAL_REWARDS });
+  const [showingRewards, setShowingRewards] = useState(false);
+  const [currentMissionIndex, setCurrentMissionIndex] = useState(0);
+  const [rewardAnimations, setRewardAnimations] = useState<{type: string, amount: number, key: string}[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     timerRef.current = window.setInterval(() => {
@@ -174,6 +174,11 @@ export const GameScreen: React.FC = () => {
       return { x: cellX, y: cellY };
     }
     
+    // Если координаты находятся в области ямы (ниже основной доски)
+    if (cellY >= BOARD_HEIGHT - 1) {
+      return { x: 0, y: BOARD_HEIGHT - 1 }; // Возвращаем координаты ямы
+    }
+    
     return null;
   };
 
@@ -204,10 +209,26 @@ export const GameScreen: React.FC = () => {
   const handleCellPress = (x: number, y: number) => {
     const cell = board[y][x];
     const item = cell.item;
+    
+    // Если кликнули на яму (нижний ряд) - показываем задание или награды
+    if (y === BOARD_HEIGHT - 1 && !item) {
+      if (showingRewards) {
+        // Если показываются награды, ничего не делаем
+        return;
+      }
+      setShowingMission(true);
+      setSelectedItem(null);
+      return;
+    }
+    
     if (item) {
       setSelectedItem(item);
+      setShowingMission(false);
+      setShowingRewards(false);
     } else {
       setSelectedItem(null);
+      setShowingMission(false);
+      setShowingRewards(false);
     }
     if (item && item.type === 'generator') {
       // Если генератор уже выбран — второй клик создаёт элемент
@@ -246,7 +267,6 @@ export const GameScreen: React.FC = () => {
     if (!dragItem || !dragOverCell) {
       setDragItem(null);
       setDragOverCell(null);
-      setIsDraggingToPit(false);
       return;
     }
     const { x: fromX, y: fromY, item } = dragItem;
@@ -256,11 +276,63 @@ export const GameScreen: React.FC = () => {
     if (fromX === toX && fromY === toY) {
       setDragItem(null);
       setDragOverCell(null);
-      setIsDraggingToPit(false);
       return;
     }
 
     const target = board[toY][toX].item;
+
+    // Если перетащили в яму (нижний ряд) - удаляем элемент
+    if (toY === BOARD_HEIGHT - 1) {
+      // Проверяем, не является ли это последним генератором
+      if (isLastGenerator(item)) {
+        // Показываем сообщение об ошибке
+        setErrorMessage('❌ Нельзя выбрасывать последний генератор! Он нужен для создания элементов.');
+        setShowingMission(false);
+        setShowingRewards(false);
+        setSelectedItem(null);
+        
+        // Скрываем сообщение через 3 секунды
+        setTimeout(() => {
+          setErrorMessage(null);
+        }, 3000);
+        
+        setDragItem(null);
+        setDragOverCell(null);
+        return;
+      }
+      
+      const newBoard = board.map(row => row.map(cell => ({ ...cell })));
+      newBoard[fromY][fromX].item = null;
+      setBoard(newBoard);
+      setPitItems(prev => [...prev, item]);
+      
+      // Проверяем, подходит ли элемент для текущего задания
+      const missionItemKey = `${item.type}-${item.level}-${item.resourceType}`;
+      const missionItemIndex = currentMission.items.findIndex(missionItem => 
+        missionItem.type === item.type && 
+        missionItem.level === item.level && 
+        missionItem.resourceType === item.resourceType
+      );
+      
+      if (missionItemIndex !== -1) {
+        const missionItem = currentMission.items[missionItemIndex];
+        const requiredCount = currentMission.items.filter(mi => 
+          mi.type === missionItem.type && 
+          mi.level === missionItem.level && 
+          mi.resourceType === missionItem.resourceType
+        ).length;
+        
+        const completedCount = Array.from(completedMissionItems).filter(key => key === missionItemKey).length;
+        
+        if (completedCount < requiredCount) {
+          setCompletedMissionItems(prev => new Set([...prev, `${missionItemKey}-${completedCount}`]));
+        }
+      }
+      
+      setDragItem(null);
+      setDragOverCell(null);
+      return;
+    }
 
     // Если целевая ячейка пуста — просто перемещаем
     if (!target) {
@@ -270,7 +342,6 @@ export const GameScreen: React.FC = () => {
       setBoard(newBoard);
       setDragItem(null);
       setDragOverCell(null);
-      setIsDraggingToPit(false);
       return;
     }
 
@@ -300,7 +371,6 @@ export const GameScreen: React.FC = () => {
         setBoard(newBoard);
         setDragItem(null);
         setDragOverCell(null);
-        setIsDraggingToPit(false);
         return;
       }
       if (
@@ -321,7 +391,6 @@ export const GameScreen: React.FC = () => {
         setBoard(newBoard);
         setDragItem(null);
         setDragOverCell(null);
-        setIsDraggingToPit(false);
         return;
       }
       if (
@@ -342,7 +411,6 @@ export const GameScreen: React.FC = () => {
         setBoard(newBoard);
         setDragItem(null);
         setDragOverCell(null);
-        setIsDraggingToPit(false);
         return;
       }
       
@@ -351,7 +419,6 @@ export const GameScreen: React.FC = () => {
         // Генераторы максимального уровня не объединяются
         setDragItem(null);
         setDragOverCell(null);
-        setIsDraggingToPit(false);
         return;
       }
       
@@ -367,66 +434,12 @@ export const GameScreen: React.FC = () => {
       setBoard(newBoard);
       setDragItem(null);
       setDragOverCell(null);
-      setIsDraggingToPit(false);
       return;
     }
 
     // Если не подходит под условия объединения
     setDragItem(null);
     setDragOverCell(null);
-    setIsDraggingToPit(false);
-  };
-
-  // Обработчик клика по яме для показа задания
-  const handlePitClick = () => {
-    setShowingMission(true);
-    setSelectedItem(null);
-  };
-
-  // Обработчик касания ямы для перетаскивания
-  const handlePitTouch = () => {
-    if (!dragItem) return;
-    
-    const { x: fromX, y: fromY, item } = dragItem;
-    
-    // Удаляем элемент с поля и добавляем в яму
-    const newBoard = board.map(row => row.map(cell => ({ ...cell })));
-    newBoard[fromY][fromX].item = null;
-    setBoard(newBoard);
-    
-    setPitItems(prev => [...prev, item]);
-    
-    // Проверяем, подходит ли элемент для текущего задания
-    const missionItemKey = `${item.type}-${item.level}-${item.resourceType}`;
-    const missionItemIndex = currentMission.items.findIndex(missionItem => 
-      missionItem.type === item.type && 
-      missionItem.level === item.level && 
-      missionItem.resourceType === item.resourceType
-    );
-    
-    if (missionItemIndex !== -1) {
-      // Проверяем, не был ли уже этот тип элемента выполнен нужное количество раз
-      const missionItem = currentMission.items[missionItemIndex];
-      const requiredCount = currentMission.items.filter(mi => 
-        mi.type === missionItem.type && 
-        mi.level === missionItem.level && 
-        mi.resourceType === missionItem.resourceType
-      ).length;
-      
-      const completedCount = Array.from(completedMissionItems).filter(key => key === missionItemKey).length;
-      
-      if (completedCount < requiredCount) {
-        setCompletedMissionItems(prev => new Set([...prev, `${missionItemKey}-${completedCount}`]));
-      }
-    }
-    
-    setDragItem(null);
-    setIsDraggingToPit(false);
-  };
-
-  // Обработчик отпускания ямы
-  const handlePitRelease = () => {
-    setIsDraggingToPit(false);
   };
 
   // Получаем оставшиеся элементы задания
@@ -449,23 +462,87 @@ export const GameScreen: React.FC = () => {
     });
   };
 
+  // Функция для подсчета генераторов на доске
+  const countGenerators = () => {
+    let count = 0;
+    board.forEach(row => {
+      row.forEach(cell => {
+        if (cell.item && cell.item.type === 'generator') {
+          count++;
+        }
+      });
+    });
+    return count;
+  };
+
+  // Функция для проверки, является ли генератор последним
+  const isLastGenerator = (item: Item) => {
+    if (item.type !== 'generator') return false;
+    return countGenerators() === 1;
+  };
+
   // Проверяем, выполнено ли задание
   const isMissionCompleted = getRemainingMissionItems().length === 0;
 
   // Выдаём награды за выполнение задания
   useEffect(() => {
     if (isMissionCompleted) {
+      const missionRewards = GAME_CONFIG.MISSION_REWARDS.getRewards(currentMission.id);
+      
+      // Добавляем анимации наград
+      const newRewardAnimations: {type: string, amount: number, key: string}[] = [];
+      if (missionRewards.black_square > 0) {
+        newRewardAnimations.push({
+          type: 'black_square',
+          amount: missionRewards.black_square,
+          key: `black_square-${Date.now()}-1`
+        });
+      }
+      if (missionRewards.orange_triangle > 0) {
+        newRewardAnimations.push({
+          type: 'orange_triangle',
+          amount: missionRewards.orange_triangle,
+          key: `orange_triangle-${Date.now()}-1`
+        });
+      }
+      
+      setRewardAnimations(prev => [...prev, ...newRewardAnimations]);
+      
+      // Удаляем анимации через 1.5 секунды
+      setTimeout(() => {
+        setRewardAnimations(prev => prev.filter(anim => !newRewardAnimations.some(na => na.key === anim.key)));
+      }, 1500);
+      
+      // Обновляем награды
       setRewards(prev => ({
-        black_square: prev.black_square + GAME_CONFIG.MISSION_REWARDS.black_square,
-        orange_triangle: prev.orange_triangle + GAME_CONFIG.MISSION_REWARDS.orange_triangle,
+        black_square: prev.black_square + missionRewards.black_square,
+        orange_triangle: prev.orange_triangle + missionRewards.orange_triangle,
       }));
+      
+      // Показываем награды и переходим к следующему заданию
+      setShowingRewards(true);
+      setShowingMission(false);
+      
+      // Через 3 секунды переходим к следующему заданию
+      setTimeout(() => {
+        const nextIndex = currentMissionIndex + 1;
+        if (nextIndex < GAME_CONFIG.MISSIONS.length) {
+          setCurrentMissionIndex(nextIndex);
+          setCurrentMission(GAME_CONFIG.MISSIONS[nextIndex]);
+          setCompletedMissionItems(new Set());
+          setShowingRewards(false);
+        } else {
+          // Все задания выполнены
+          setShowingRewards(false);
+        }
+      }, 3000);
     }
   }, [isMissionCompleted]);
 
   return (
     <View style={styles.container}>
       <ResourceBarsComponent resources={resources} animations={resourceAnimations} />
-      <RewardBarsComponent rewards={rewards} />
+      <RewardBarsComponent rewards={rewards} animations={rewardAnimations} />
       <View onLayout={handleBoardLayout}>
         <GameBoard
           board={board}
@@ -478,30 +555,32 @@ export const GameScreen: React.FC = () => {
           selectedItemId={selectedItem ? selectedItem.id : null}
         />
       </View>
-      <Pressable 
-        style={{
-          width: '90%', 
-          height: 120, 
-          backgroundColor: isDraggingToPit ? '#616161' : '#424242', 
-          borderRadius: 8, 
-          marginTop: 12, 
-          marginBottom: 12, 
-          justifyContent: 'center', 
-          alignItems: 'center',
-          borderWidth: isDraggingToPit ? 2 : 0,
-          borderColor: '#FFD600'
-        }}
-        onTouchStart={handlePitTouch}
-        onTouchEnd={handlePitRelease}
-        onPress={handlePitClick}
-      >
-        <Text style={{color: 'white', fontSize: 18, fontWeight: 'bold'}}>Яма</Text>
-        {pitItems.length > 0 && (
-          <Text style={{color: 'white', fontSize: 14, marginTop: 8}}>Элементов: {pitItems.length}</Text>
-        )}
-      </Pressable>
       <View style={{width: '90%', minHeight: 60, backgroundColor: '#f0f0f0', borderRadius: 12, marginTop: 12, justifyContent: 'center', alignItems: 'center', padding: 10, borderWidth: 1, borderColor: '#bbb'}}>
-        {showingMission ? (
+        {errorMessage ? (
+          <Text style={{color: 'red', fontWeight: 'bold', fontSize: 16, textAlign: 'center'}}>
+            {errorMessage}
+          </Text>
+        ) : showingRewards ? (
+          <>
+            <Text style={{fontWeight: 'bold', fontSize: 16, color: 'green'}}>
+              🎉 Задание #{currentMission.id} выполнено! 🎉
+            </Text>
+            <Text style={{marginTop: 8, marginBottom: 8}}>Полученные награды:</Text>
+            {GAME_CONFIG.MISSION_REWARDS.getRewards(currentMission.id).black_square > 0 && (
+              <Text style={{marginVertical: 2, color: '#333'}}>
+                ⬛ Черные квадраты: +{GAME_CONFIG.MISSION_REWARDS.getRewards(currentMission.id).black_square}
+              </Text>
+            )}
+            {GAME_CONFIG.MISSION_REWARDS.getRewards(currentMission.id).orange_triangle > 0 && (
+              <Text style={{marginVertical: 2, color: '#FF8C00'}}>
+                🔺 Оранжевые треугольники: +{GAME_CONFIG.MISSION_REWARDS.getRewards(currentMission.id).orange_triangle}
+              </Text>
+            )}
+            <Text style={{marginTop: 8, fontSize: 12, color: '#666'}}>
+              Следующее задание загружается...
+            </Text>
+          </>
+        ) : showingMission ? (
           <>
             <Text style={{fontWeight: 'bold', fontSize: 16}}>
               Задание #{currentMission.id} {isMissionCompleted ? '✅' : ''}
